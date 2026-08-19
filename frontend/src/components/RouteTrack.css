@@ -1,0 +1,79 @@
+.route-track {
+  display: flex;
+  width: 100%;
+  padding: 24px 8px 8px;
+}
+
+.route-track__segment {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.route-track__node-wrap {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.route-track__node {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--paper-raised);
+  border: 3px solid var(--line);
+  flex-shrink: 0;
+  margin-left: -10px;
+  transition: background 0.3s ease, border-color 0.3s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.route-track__segment:first-child .route-track__node {
+  margin-left: 0;
+}
+
+.route-track__node.is-filled {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.route-track__node.is-current {
+  background: var(--marigold);
+  border-color: var(--marigold-dark);
+  box-shadow: 0 0 0 5px rgba(232, 169, 59, 0.25);
+}
+
+.route-track__line {
+  height: 3px;
+  flex: 1;
+  background: var(--line);
+  transition: background 0.3s ease;
+}
+
+.route-track__line.is-filled {
+  background: var(--ink);
+}
+
+.route-track__label {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.route-track__label.is-active {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.route-track--compact .route-track__label {
+  font-size: 10px;
+}
+
+.route-track--compact {
+  padding: 12px 4px 4px;
+}

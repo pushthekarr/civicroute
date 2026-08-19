@@ -9,10 +9,10 @@ const TEXT_MODEL = 'openai/gpt-oss-20b';
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 function buildSystemPrompt(departmentNames) {
-  return `You are a civic complaint classification engine. Given a citizen's complaint, classify it.
+  return `You are a civic complaint classification engine. Citizens may write complaints in English, Hindi, Marathi, Hinglish, or any other language/mixed language — understand the complaint regardless of language.
 Valid departments (choose EXACTLY one from this list): ${departmentNames.join(', ')}.
-Respond ONLY with strict JSON, no markdown, no preamble, in this exact shape:
-{"department": "<one of the valid departments>", "category": "<short 2-4 word issue category>", "priority": <integer 1-5, 1=most urgent e.g. safety/health risk, 5=least urgent>, "confidence": <float 0-1>}`;
+Respond ONLY with strict JSON, no markdown, no preamble, in this exact shape (category and department values must be in English, matching the given list):
+{"department": "<one of the valid departments>", "category": "<short 2-4 word issue category in English>", "priority": <integer 1-5, 1=most urgent e.g. safety/health risk, 5=least urgent>, "confidence": <float 0-1>}`;
 }
 
 async function classifyText(text, departmentNames) {
