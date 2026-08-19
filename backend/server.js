@@ -1,7 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-require('./src/db/init'); // ensures DB + seed data exist on boot
+const { load } = require('./src/db/init');
+load(); // ensures data.json + seed departments exist on boot
 
 const complaintsRouter = require('./src/routes/complaints');
 

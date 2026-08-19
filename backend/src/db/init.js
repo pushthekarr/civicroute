@@ -1,69 +1,46 @@
-const Database = require('better-sqlite3');
+// Lightweight JSON-file-backed data store — no native compilation required
+// (unlike better-sqlite3, which needs Visual Studio build tools on Windows).
+// Good enough for this project's scale; swap for Postgres later if needed.
+
+const fs = require('fs');
 const path = require('path');
 
-const db = new Database(path.join(__dirname, '../../civicroute.db'));
-db.pragma('journal_mode = WAL');
+const DB_PATH = path.join(__dirname, '../../data.json');
 
-// Departments taxonomy - seed data, extensible without code changes
-db.exec(`
-CREATE TABLE IF NOT EXISTS departments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE NOT NULL,
-  keywords TEXT NOT NULL,          -- comma-separated, used by trie fallback
-  avg_resolution_days INTEGER NOT NULL DEFAULT 7
-);
-
-CREATE TABLE IF NOT EXISTS complaints (
-  id TEXT PRIMARY KEY,             -- e.g. GC-2026-00042
-  raw_text TEXT NOT NULL,
-  image_path TEXT,
-  department_id INTEGER,
-  category TEXT,
-  priority INTEGER NOT NULL DEFAULT 3,   -- 1 = highest urgency, 5 = lowest
-  status TEXT NOT NULL DEFAULT 'Submitted', -- Submitted, In Progress, Resolved
-  eta_days INTEGER,
-  classification_source TEXT,      -- 'ai' or 'fallback_trie'
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (department_id) REFERENCES departments(id)
-);
-
-CREATE TABLE IF NOT EXISTS status_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  complaint_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  changed_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (complaint_id) REFERENCES complaints(id)
-);
-`);
-
-const DEPARTMENTS = [
-  ['Roads & PWD', 'pothole,road,footpath,pavement,bridge,construction'],
-  ['Water Supply', 'water,pipeline,leakage,tap,supply,tanker'],
-  ['Electricity', 'power,electricity,outage,transformer,wire,streetlight cut'],
-  ['Sanitation & Garbage', 'garbage,waste,trash,dump,cleaning,sewage,drain'],
-  ['Food Safety', 'food,restaurant,hygiene,adulteration,expired food'],
-  ['Drugs & Medicines', 'medicine,drug,pharmacy,fake medicine,expired drug'],
-  ['Public Health', 'hospital,clinic,disease,outbreak,mosquito,health'],
-  ['Police', 'crime,theft,safety,harassment,traffic violation,noise'],
-  ['Education', 'school,college,teacher,fees,education,exam'],
-  ['Municipal & Property Tax', 'tax,property,municipal,certificate,license'],
-  ['Public Transport', 'bus,transport,auto,taxi,station,railway'],
-  ['Environment & Pollution', 'pollution,smoke,noise pollution,tree,air quality'],
-  ['Street Lighting', 'streetlight,lamp,light not working,dark street'],
-  ['Building & Encroachment', 'illegal construction,encroachment,building,demolition'],
-  ['Consumer Affairs', 'consumer,billing,fraud,overcharge,shop'],
-  ['Telecom & Utilities', 'network,telecom,broadband,tower,signal'],
+const DEPARTMENTS_SEED = [
+  { name: 'Roads & PWD', keywords: 'pothole,road,footpath,pavement,bridge,construction', avg_resolution_days: 7 },
+  { name: 'Water Supply', keywords: 'water,pipeline,leakage,tap,supply,tanker', avg_resolution_days: 5 },
+  { name: 'Electricity', keywords: 'power,electricity,outage,transformer,wire,streetlight cut', avg_resolution_days: 4 },
+  { name: 'Sanitation & Garbage', keywords: 'garbage,waste,trash,dump,cleaning,sewage,drain', avg_resolution_days: 3 },
+  { name: 'Food Safety', keywords: 'food,restaurant,hygiene,adulteration,expired food', avg_resolution_days: 6 },
+  { name: 'Drugs & Medicines', keywords: 'medicine,drug,pharmacy,fake medicine,expired drug', avg_resolution_days: 6 },
+  { name: 'Public Health', keywords: 'hospital,clinic,disease,outbreak,mosquito,health', avg_resolution_days: 5 },
+  { name: 'Police', keywords: 'crime,theft,safety,harassment,traffic violation,noise', avg_resolution_days: 2 },
+  { name: 'Education', keywords: 'school,college,teacher,fees,education,exam', avg_resolution_days: 8 },
+  { name: 'Municipal & Property Tax', keywords: 'tax,property,municipal,certificate,license', avg_resolution_days: 9 },
+  { name: 'Public Transport', keywords: 'bus,transport,auto,taxi,station,railway', avg_resolution_days: 6 },
+  { name: 'Environment & Pollution', keywords: 'pollution,smoke,noise pollution,tree,air quality', avg_resolution_days: 8 },
+  { name: 'Street Lighting', keywords: 'streetlight,lamp,light not working,dark street', avg_resolution_days: 4 },
+  { name: 'Building & Encroachment', keywords: 'illegal construction,encroachment,building,demolition', avg_resolution_days: 10 },
+  { name: 'Consumer Affairs', keywords: 'consumer,billing,fraud,overcharge,shop', avg_resolution_days: 7 },
+  { name: 'Telecom & Utilities', keywords: 'network,telecom,broadband,tower,signal', avg_resolution_days: 5 },
 ];
 
-const insertDept = db.prepare(
-  'INSERT OR IGNORE INTO departments (name, keywords, avg_resolution_days) VALUES (?, ?, ?)'
-);
-const seedTx = db.transaction(() => {
-  for (const [name, keywords] of DEPARTMENTS) {
-    insertDept.run(name, keywords, 5 + Math.floor(Math.random() * 5));
+function load() {
+  if (!fs.existsSync(DB_PATH)) {
+    const initial = {
+      departments: DEPARTMENTS_SEED.map((d, i) => ({ id: i + 1, ...d })),
+      complaints: [],
+      status_log: [],
+    };
+    fs.writeFileSync(DB_PATH, JSON.stringify(initial, null, 2));
+    return initial;
   }
-});
-seedTx();
+  return JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+}
 
-module.exports = db;
+function save(db) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+}
+
+module.exports = { load, save };

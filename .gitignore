@@ -9,3 +9,4 @@ backend/uploads/*
 dist/
 build/
 .DS_Store
+backend/data.json
