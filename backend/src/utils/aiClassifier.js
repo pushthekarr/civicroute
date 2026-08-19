@@ -5,8 +5,8 @@
 const fetch = require('node-fetch');
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const TEXT_MODEL = 'llama-3.3-70b-versatile';
-const VISION_MODEL = 'llama-3.2-11b-vision-preview';
+const TEXT_MODEL = 'openai/gpt-oss-20b';
+const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 function buildSystemPrompt(departmentNames) {
   return `You are a civic complaint classification engine. Given a citizen's complaint, classify it.
@@ -35,6 +35,10 @@ async function classifyText(text, departmentNames) {
       }),
     });
     const data = await res.json();
+    if (!res.ok || !data.choices) {
+      console.error('Groq API error response:', JSON.stringify(data));
+      return null;
+    }
     const raw = data.choices[0].message.content.trim();
     const clean = raw.replace(/```json|```/g, '').trim();
     return JSON.parse(clean);
@@ -69,6 +73,10 @@ async function classifyImage(base64Image, mimeType, departmentNames) {
       }),
     });
     const data = await res.json();
+    if (!res.ok || !data.choices) {
+      console.error('Groq API error response:', JSON.stringify(data));
+      return null;
+    }
     const raw = data.choices[0].message.content.trim();
     const clean = raw.replace(/```json|```/g, '').trim();
     return JSON.parse(clean);
