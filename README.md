@@ -8,8 +8,8 @@ CivicRoute is an AI-powered civic grievance redressal system. Citizens submit co
 
 - **Frontend:** React (Vite) — public complaint submission form, complaint tracker, live analytics dashboard
 - **Backend:** Node.js / Express — REST API, classification pipeline
-- **Database:** SQLite (via better-sqlite3)
-- **AI:** Groq API (Llama 3.3 for text, Llama 3.2 Vision for images)
+- **Data store:** Lightweight JSON-backed persistent store for local development and the current prototype
+- **AI:** Groq API — multilingual text classification and vision-based image classification
 - **Deployment:** AWS EC2 (Elastic IP) + Nginx reverse proxy + PM2 + Certbot (HTTPS)
 
 ## DSA Components
@@ -28,7 +28,7 @@ civicroute/
 │   ├── src/
 │   │   ├── routes/          # Express route definitions
 │   │   ├── controllers/     # Request handlers / business logic
-│   │   ├── db/               # SQLite schema, seed data
+│   │   ├── db/               # Persistent data store and department seed data
 │   │   └── utils/            # Trie, min-heap, AI classifier, ETA engine
 │   ├── server.js
 │   └── .env.example
@@ -41,6 +41,15 @@ civicroute/
 cd backend
 npm install
 cp .env.example .env    # add your GROQ_API_KEY
+npm run dev
+```
+
+In another terminal:
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
 npm run dev
 ```
 
