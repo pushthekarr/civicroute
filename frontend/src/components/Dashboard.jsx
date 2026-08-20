@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
 } from 'recharts';
-import { fetchStats } from '../api';
+import { fetchPriorityQueues, fetchStats } from '../api';
 import './Dashboard.css';
 
 const STATUS_COLORS = {
@@ -18,10 +18,11 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [queues, setQueues] = useState([]);
 
   useEffect(() => {
-    fetchStats()
-      .then(setStats)
+    Promise.all([fetchStats(), fetchPriorityQueues()])
+      .then(([statsData, queueData]) => { setStats(statsData); setQueues(queueData.queues || []); })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -61,7 +62,21 @@ export default function Dashboard() {
           <span className="stat-card__value">{deptData.length}</span>
           <span className="stat-card__label">Departments active</span>
         </div>
+        <div className="stat-card">
+          <span className="stat-card__value">{stats.openCount}</span>
+          <span className="stat-card__label">Open complaints</span>
+        </div>
       </div>
+
+      {queues.length > 0 && (
+        <div className="card dashboard__queue">
+          <h3 className="chart-card__title">Priority routing queues</h3>
+          <p>Open complaints are ordered by urgency, then by submission time. Individual details stay private.</p>
+          <div className="queue-summary">
+            {queues.map((queue) => <div key={queue.department}><strong>{queue.department}</strong><span>{queue.items.length} open · next priority {queue.items[0].priority}</span></div>)}
+          </div>
+        </div>
+      )}
 
       <div className="dashboard__panels">
         <div className="card chart-card">

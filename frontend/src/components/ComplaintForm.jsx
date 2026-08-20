@@ -23,11 +23,20 @@ export default function ComplaintForm() {
   function handleImageChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      setErrorMsg('Please use a JPG, PNG, or WebP image smaller than 5 MB.');
+      setStatus('error');
+      e.target.value = '';
+      return;
+    }
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+    setErrorMsg('');
   }
 
   function removeImage() {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImageFile(null);
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -112,6 +121,8 @@ export default function ComplaintForm() {
           placeholder="e.g. Sadar road madhe khup potholes ahet, gadya pass karta yet nahit..."
           value={text}
           onChange={(e) => setText(e.target.value)}
+          maxLength={3000}
+          required
         />
 
         <label className="field-label">Add a photo (optional)</label>
@@ -125,7 +136,7 @@ export default function ComplaintForm() {
               hidden
             />
             <span className="upload-box__icon">+</span>
-            <span>Tap to add a photo</span>
+            <span>Add a JPG, PNG, or WebP photo (max 5 MB)</span>
           </label>
         ) : (
           <div className="upload-preview">

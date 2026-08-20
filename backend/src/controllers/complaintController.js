@@ -1,124 +1,92 @@
+const crypto = require('crypto');
+const fs = require('fs');
 const { nanoid } = require('nanoid');
 const { load, save } = require('../db/init');
-const { classifyText, classifyImage } = require('../utils/aiClassifier');
+const { classifyText, classifyImage, combineClassifications } = require('../utils/aiClassifier');
 const { buildTrieFromDepartments } = require('../utils/trieClassifier');
 const { predictETA } = require('../utils/etaEngine');
-const fs = require('fs');
+const { OPEN_STATUSES, getQueueSnapshot } = require('../utils/complaintQueue');
 
-function generateComplaintId() {
-  const year = new Date().getFullYear();
-  const suffix = nanoid(6).toUpperCase();
-  return `GC-${year}-${suffix}`;
+const STATUS_FLOW = { Submitted: ['Routed'], Routed: ['In Progress'], 'In Progress': ['Resolved'], Resolved: [] };
+const MAX_TEXT_LENGTH = 3000;
+
+function generateComplaintId() { return `GC-${new Date().getFullYear()}-${nanoid(7).replace(/[^a-z0-9]/gi, 'X').toUpperCase()}`; }
+function complaintHistory(db, id) { return db.status_log.filter((entry) => entry.complaint_id === id); }
+function isAdminRequest(req) {
+  const expected = process.env.ADMIN_API_KEY;
+  const supplied = req.get('x-admin-key');
+  return Boolean(expected && supplied && expected.length === supplied.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(supplied)));
 }
 
-async function createComplaint(req, res) {
+async function createComplaint(req, res, next) {
   try {
-    const { text } = req.body;
-    if (!text || text.trim().length < 5) {
-      return res.status(400).json({ error: 'Complaint text is required (min 5 chars).' });
+    const text = String(req.body.text || '').trim();
+    if (text.length < 5 || text.length > MAX_TEXT_LENGTH) return res.status(400).json({ error: `Complaint text must be between 5 and ${MAX_TEXT_LENGTH} characters.` });
+    const db = load(); const departmentNames = db.departments.map((department) => department.name);
+    const textResult = await classifyText(text, departmentNames);
+    let imageResult = null;
+    if (req.file && process.env.GROQ_API_KEY) imageResult = await classifyImage(fs.readFileSync(req.file.path, { encoding: 'base64' }), req.file.mimetype, departmentNames);
+    let result = combineClassifications(textResult, imageResult);
+    let source = result?.source;
+    if (!result) {
+      const matched = buildTrieFromDepartments(db.departments).score(text)[0];
+      result = { department: matched?.department || 'Municipal & Property Tax', category: matched ? 'Keyword matched issue' : 'General civic issue', priority: matched ? 3 : 4, confidence: matched ? 0.5 : 0.1 };
+      source = matched ? 'fallback_trie' : 'fallback_general';
     }
-
-    const db = load();
-    const departmentNames = db.departments.map(d => d.name);
-
-    // 1. Try AI classification (text)
-    let result = await classifyText(text, departmentNames);
-    let source = 'ai';
-
-    // 2. If an image was uploaded and AI is available, let vision model weigh in too
-    if (req.file && process.env.GROQ_API_KEY) {
-      const base64 = fs.readFileSync(req.file.path, { encoding: 'base64' });
-      const imgResult = await classifyImage(base64, req.file.mimetype, departmentNames);
-      if (!result && imgResult) result = imgResult;
-    }
-
-    // 3. Fallback: trie-based keyword matcher
-    if (!result || !departmentNames.includes(result.department)) {
-      const trie = buildTrieFromDepartments(db.departments);
-      const fallbackDept = trie.classify(text) || db.departments[0].name;
-      result = { department: fallbackDept, category: 'General', priority: 3, confidence: 0.3 };
-      source = 'fallback_trie';
-    }
-
-    const dept = db.departments.find(d => d.name === result.department) || db.departments[0];
-
-    const backlogCount = db.complaints.filter(
-      c => c.department_id === dept.id && c.status !== 'Resolved'
-    ).length;
-
-    const eta = predictETA({
-      avgResolutionDays: dept.avg_resolution_days,
-      priority: result.priority || 3,
-      backlogCount,
-    });
-
-    const id = generateComplaintId();
-    const now = new Date().toISOString();
-
-    const complaint = {
-      id,
-      raw_text: text,
-      image_path: req.file ? req.file.path : null,
-      department_id: dept.id,
-      category: result.category || 'General',
-      priority: result.priority || 3,
-      status: 'Submitted',
-      eta_days: eta,
-      classification_source: source,
-      created_at: now,
-      updated_at: now,
-    };
-
+    const department = db.departments.find((item) => item.name === result.department) || db.departments[0];
+    const backlogCount = db.complaints.filter((item) => item.department_id === department.id && OPEN_STATUSES.has(item.status)).length;
+    const eta = predictETA({ avgResolutionDays: department.avg_resolution_days, priority: result.priority, backlogCount });
+    const now = new Date().toISOString(); const id = generateComplaintId();
+    const complaint = { id, raw_text: text, image_path: req.file ? req.file.path : null, image_mime_type: req.file?.mimetype || null, department_id: department.id, category: result.category, priority: result.priority, confidence: result.confidence, status: 'Routed', eta_days: eta, classification_source: source, created_at: now, updated_at: now };
     db.complaints.push(complaint);
-    db.status_log.push({ complaint_id: id, status: 'Submitted', changed_at: now });
+    db.status_log.push({ complaint_id: id, status: 'Submitted', changed_at: now, note: 'Complaint received' }, { complaint_id: id, status: 'Routed', changed_at: now, note: `Automatically routed to ${department.name}` });
     save(db);
-
-    res.status(201).json({
-      complaintId: id,
-      department: dept.name,
-      category: complaint.category,
-      priority: complaint.priority,
-      etaDays: eta,
-      status: 'Submitted',
-      classificationSource: source,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to process complaint.' });
-  }
+    res.status(201).json({ complaintId: id, department: department.name, category: complaint.category, priority: complaint.priority, etaDays: eta, status: complaint.status, classificationSource: source });
+  } catch (error) { next(error); }
 }
 
-function getComplaint(req, res) {
-  const db = load();
-  const complaint = db.complaints.find(c => c.id === req.params.id);
-  if (!complaint) return res.status(404).json({ error: 'Complaint not found.' });
-
-  const dept = db.departments.find(d => d.id === complaint.department_id);
-  res.json({ ...complaint, department_name: dept ? dept.name : null });
+function getComplaint(req, res, next) {
+  try {
+    const db = load(); const complaint = db.complaints.find((item) => item.id.toUpperCase() === req.params.id.toUpperCase());
+    if (!complaint) return res.status(404).json({ error: 'Complaint not found. Check the ID and try again.' });
+    const department = db.departments.find((item) => item.id === complaint.department_id);
+    const queue = getQueueSnapshot(db.complaints, complaint.department_id);
+    const queuePosition = queue.findIndex((item) => item.complaintId === complaint.id) + 1;
+    return res.json({ ...complaint, department_name: department?.name || 'Unassigned', queue_position: queuePosition || null, history: complaintHistory(db, complaint.id) });
+  } catch (error) { return next(error); }
 }
 
-function getStats(req, res) {
-  const db = load();
-
-  const byDepartment = db.departments
-    .map(d => ({
-      department: d.name,
-      count: db.complaints.filter(c => c.department_id === d.id).length,
-    }))
-    .sort((a, b) => b.count - a.count);
-
-  const statusCounts = {};
-  for (const c of db.complaints) {
-    statusCounts[c.status] = (statusCounts[c.status] || 0) + 1;
-  }
-  const byStatus = Object.entries(statusCounts).map(([status, count]) => ({ status, count }));
-
-  const total = db.complaints.length;
-  const avgEtaDays = total
-    ? Math.round(db.complaints.reduce((sum, c) => sum + c.eta_days, 0) / total)
-    : 0;
-
-  res.json({ total, avgEtaDays, byDepartment, byStatus });
+function updateComplaintStatus(req, res, next) {
+  try {
+    if (!isAdminRequest(req)) return res.status(401).json({ error: 'Administrator authorization is required.' });
+    const status = String(req.body.status || ''); const note = String(req.body.note || '').trim().slice(0, 280);
+    const db = load(); const complaint = db.complaints.find((item) => item.id.toUpperCase() === req.params.id.toUpperCase());
+    if (!complaint) return res.status(404).json({ error: 'Complaint not found.' });
+    if (!STATUS_FLOW[complaint.status]?.includes(status)) return res.status(400).json({ error: `Cannot move a ${complaint.status} complaint to ${status}.` });
+    const now = new Date().toISOString(); complaint.status = status; complaint.updated_at = now;
+    db.status_log.push({ complaint_id: complaint.id, status, changed_at: now, note: note || undefined }); save(db);
+    return res.json({ id: complaint.id, status: complaint.status, history: complaintHistory(db, complaint.id) });
+  } catch (error) { return next(error); }
 }
 
-module.exports = { createComplaint, getComplaint, getStats };
+function getStats(req, res, next) {
+  try {
+    const db = load(); const total = db.complaints.length;
+    const byDepartment = db.departments.map((department) => ({ department: department.name, count: db.complaints.filter((item) => item.department_id === department.id).length })).sort((a, b) => b.count - a.count);
+    const statuses = ['Submitted', 'Routed', 'In Progress', 'Resolved'];
+    const byStatus = statuses.map((status) => ({ status, count: db.complaints.filter((item) => item.status === status).length }));
+    const avgEtaDays = total ? Math.round(db.complaints.reduce((sum, item) => sum + item.eta_days, 0) / total) : 0;
+    const openCount = db.complaints.filter((item) => OPEN_STATUSES.has(item.status)).length;
+    return res.json({ total, openCount, resolvedCount: total - openCount, avgEtaDays, byDepartment, byStatus });
+  } catch (error) { return next(error); }
+}
+
+function getPriorityQueues(req, res, next) {
+  try {
+    const db = load();
+    const queues = db.departments.map((department) => ({ department: department.name, items: getQueueSnapshot(db.complaints, department.id).map((item, index) => ({ ...item, queuePosition: index + 1 })) })).filter((queue) => queue.items.length);
+    return res.json({ queues });
+  } catch (error) { return next(error); }
+}
+
+module.exports = { createComplaint, getComplaint, updateComplaintStatus, getStats, getPriorityQueues };

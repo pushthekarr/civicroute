@@ -6,9 +6,10 @@ const STEPS = ['Submitted', 'Routed', 'In Progress', 'Resolved'];
 // "Submitted" -> step 0, but as soon as it's classified it's effectively
 // "Routed" too, so we show step 1 filled immediately after submission.
 function statusToStep(status) {
+  if (status === 'Submitted') return 0;
   if (status === 'Resolved') return 3;
   if (status === 'In Progress') return 2;
-  return 1; // Submitted + auto-routed
+  return 1;
 }
 
 export default function RouteTrack({ status, compact = false }) {

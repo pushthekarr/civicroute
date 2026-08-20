@@ -66,7 +66,23 @@ export default function TrackComplaint() {
             <span className="confirmation__stat-label">Expected resolution</span>
             <span className="confirmation__stat-value">~{result.eta_days} days</span>
           </div>
+          {result.queue_position && (
+            <div className="track-result__row">
+              <span className="confirmation__stat-label">Queue position</span>
+              <span className="confirmation__stat-value">#{result.queue_position}</span>
+            </div>
+          )}
           <RouteTrack status={result.status} />
+          <div className="status-history" aria-label="Complaint status history">
+            <h3>Status updates</h3>
+            {result.history?.map((entry) => (
+              <div className="status-history__item" key={`${entry.status}-${entry.changed_at}`}>
+                <strong>{entry.status}</strong>
+                <span>{new Date(entry.changed_at).toLocaleString()}</span>
+                {entry.note && <small>{entry.note}</small>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

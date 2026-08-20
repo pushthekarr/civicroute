@@ -26,3 +26,10 @@ export async function fetchStats() {
   if (!res.ok) throw new Error('Could not load dashboard data.');
   return res.json();
 }
+
+export async function fetchPriorityQueues() {
+  const res = await fetch(`${API_BASE}/complaints/queues`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not load priority queues.');
+  return data;
+}
