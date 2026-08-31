@@ -11,7 +11,7 @@ export default function App() {
     <div className="app">
       <Header active={tab} onChange={setTab} />
       <main>
-        {tab === 'submit' && <ComplaintForm />}
+        {tab === 'submit' && <ComplaintForm onTrack={() => setTab('track')} />}
         {tab === 'track' && <TrackComplaint />}
         {tab === 'dashboard' && <Suspense fallback={<div className="dashboard-state">Loading dashboard…</div>}><Dashboard /></Suspense>}
       </main>

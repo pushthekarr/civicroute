@@ -1,133 +1,26 @@
-import { useEffect, useState } from 'react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, Legend,
-} from 'recharts';
+import { useEffect, useMemo, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fetchPriorityQueues, fetchStats } from '../api';
 import './Dashboard.css';
 
-const STATUS_COLORS = {
-  Submitted: '#DCE1E8',
-  'In Progress': '#E8A93B',
-  Resolved: '#2E8B74',
-};
-
-const BAR_COLOR = '#1B2A4A';
+const STATUS_COLORS = { Submitted: '#98a6b8', Routed: '#2e638f', 'In Progress': '#c78919', Resolved: '#2e8b74' };
+const metric = (value, label, note) => <article className="metric-card"><span className="metric-card__label">{label}</span><strong>{value ?? '—'}</strong>{note && <small>{note}</small>}</article>;
 
 export default function Dashboard() {
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [queues, setQueues] = useState([]);
-
-  useEffect(() => {
-    Promise.all([fetchStats(), fetchPriorityQueues()])
-      .then(([statsData, queueData]) => { setStats(statsData); setQueues(queueData.queues || []); })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <div className="dashboard-state">Loading civic data…</div>;
+  const [stats, setStats] = useState(null); const [queues, setQueues] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [query, setQuery] = useState(''); const [statusFilter, setStatusFilter] = useState('all');
+  useEffect(() => { Promise.all([fetchStats(), fetchPriorityQueues()]).then(([statsData, queueData]) => { setStats(statsData); setQueues(queueData.queues || []); }).catch((err) => setError(err.message)).finally(() => setLoading(false)); }, []);
+  const departments = useMemo(() => (stats?.byDepartment || []).filter((item) => item.count > 0 && item.department.toLowerCase().includes(query.toLowerCase())), [stats, query]);
+  const statusData = useMemo(() => (stats?.byStatus || []).filter((item) => statusFilter === 'all' || item.status === statusFilter), [stats, statusFilter]);
+  if (loading) return <div className="dashboard-state">Loading public civic data…</div>;
   if (error) return <div className="dashboard-state dashboard-state--error">{error}</div>;
-  if (!stats || stats.total === 0) {
-    return (
-      <div className="dashboard-state">
-        No complaints have been reported yet. Once citizens start submitting reports, this dashboard
-        fills in with live department and status breakdowns.
-      </div>
-    );
-  }
-
-  const deptData = stats.byDepartment.filter((d) => d.count > 0);
-  const statusData = stats.byStatus;
-
-  return (
-    <div className="container dashboard">
-      <div className="dashboard__headline">
-        <span className="eyebrow">Public dashboard</span>
-        <h2>How the city is doing</h2>
-        <p className="form-intro">Live view of every complaint reported through CivicRoute — no login needed.</p>
-      </div>
-
-      <div className="dashboard__stat-row">
-        <div className="stat-card">
-          <span className="stat-card__value">{stats.total}</span>
-          <span className="stat-card__label">Total complaints</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-card__value">{stats.avgEtaDays}</span>
-          <span className="stat-card__label">Avg. resolution (days)</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-card__value">{deptData.length}</span>
-          <span className="stat-card__label">Departments active</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-card__value">{stats.openCount}</span>
-          <span className="stat-card__label">Open complaints</span>
-        </div>
-      </div>
-
-      {queues.length > 0 && (
-        <div className="card dashboard__queue">
-          <h3 className="chart-card__title">Priority routing queues</h3>
-          <p>Open complaints are ordered by urgency, then by submission time. Individual details stay private.</p>
-          <div className="queue-summary">
-            {queues.map((queue) => <div key={queue.department}><strong>{queue.department}</strong><span>{queue.items.length} open · next priority {queue.items[0].priority}</span></div>)}
-          </div>
-        </div>
-      )}
-
-      <div className="dashboard__panels">
-        <div className="card chart-card">
-          <h3 className="chart-card__title">Complaints by department</h3>
-          <ResponsiveContainer width="100%" height={Math.max(220, deptData.length * 34)}>
-            <BarChart data={deptData} layout="vertical" margin={{ left: 8, right: 16 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" horizontal={false} />
-              <XAxis type="number" allowDecimals={false} stroke="var(--text-muted)" fontSize={12} />
-              <YAxis
-                type="category"
-                dataKey="department"
-                width={150}
-                stroke="var(--text-muted)"
-                fontSize={12}
-              />
-              <Tooltip
-                contentStyle={{ borderRadius: 8, border: '1px solid var(--line)', fontSize: 13 }}
-              />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                {deptData.map((_, i) => (
-                  <Cell key={i} fill={BAR_COLOR} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="card chart-card">
-          <h3 className="chart-card__title">Status breakdown</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <Pie
-                data={statusData}
-                dataKey="count"
-                nameKey="status"
-                cx="50%"
-                cy="50%"
-                innerRadius={55}
-                outerRadius={90}
-                paddingAngle={3}
-              >
-                {statusData.map((entry, i) => (
-                  <Cell key={i} fill={STATUS_COLORS[entry.status] || '#999'} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--line)', fontSize: 13 }} />
-              <Legend iconType="circle" wrapperStyle={{ fontSize: 13 }} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="dashboard-page"><div className="dashboard-banner"><div className="container"><span className="eyebrow">CivicRoute · public information service</span><h2>Civic complaint dashboard</h2><p>Aggregated service information for citizens. Personal details and individual complaint descriptions are not shown.</p><span className="dashboard-banner__update">Data reflects complaints registered through CivicRoute</span></div></div><main className="container dashboard">
+    <section className="dashboard-controls" aria-label="Dashboard filters"><label>Find a department<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search department" /></label><label>Filter status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{stats.byStatus.map((item) => <option value={item.status} key={item.status}>{item.status}</option>)}</select></label></section>
+    <section className="metrics-grid" aria-label="Complaint overview">{metric(stats.total, 'Total complaints')}{metric(stats.registeredToday, 'Registered today')}{metric(stats.openCount, 'Pending / in progress')}{metric(stats.resolvedCount, 'Resolved complaints')}{metric(stats.avgResolutionDays, 'Average resolution time', stats.avgResolutionDays === null ? 'Available after a complaint is resolved' : 'days for resolved complaints')}{metric(stats.highPriorityCount, 'High-priority open', 'Urgent and high priority')}</section>
+    {stats.total === 0 ? <div className="empty-dashboard">No complaints have been registered yet. This dashboard will show aggregated civic-service information as reports are received.</div> : <>
+      <section className="dashboard-section"><div className="section-heading"><div><span className="eyebrow">Service overview</span><h3>Complaint status distribution</h3></div><p>Current lifecycle position of all registered complaints.</p></div><div className="dashboard-grid dashboard-grid--two"><article className="panel"><h4>Status distribution</h4><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={statusData} dataKey="count" nameKey="status" innerRadius={58} outerRadius={92} paddingAngle={2}>{statusData.map((entry) => <Cell fill={STATUS_COLORS[entry.status]} key={entry.status} />)}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer></article><article className="panel status-table"><h4>Status summary</h4>{stats.byStatus.map((item) => <div key={item.status}><span><i style={{ background: STATUS_COLORS[item.status] }} />{item.status}</span><strong>{item.count}</strong></div>)}<div><span><i style={{ background: '#c78919' }} />Currently in progress</span><strong>{stats.inProgressCount}</strong></div></article></div></section>
+      <section className="dashboard-section"><div className="section-heading"><div><span className="eyebrow">Department performance</span><h3>Complaint volume by department</h3></div><p>{departments.length} department{departments.length === 1 ? '' : 's'} matching the current search.</p></div><article className="panel"><ResponsiveContainer width="100%" height={Math.max(250, departments.length * 42)}><BarChart data={departments} layout="vertical" margin={{ left: 12, right: 24 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="department" width={175} tick={{ fontSize: 12 }} /><Tooltip /><Bar dataKey="count" name="Complaints" fill="#1b2a4a" radius={[0, 3, 3, 0]} /></BarChart></ResponsiveContainer></article></section>
+      <section className="dashboard-grid dashboard-grid--two dashboard-section"><article className="panel"><h3>Complaint registration trend</h3><p className="panel-intro">Daily complaints received, based on available records.</p>{stats.trends.length ? <ResponsiveContainer width="100%" height={240}><LineChart data={stats.trends}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" tickFormatter={(date) => date.slice(5)} tick={{ fontSize: 12 }} /><YAxis allowDecimals={false} /><Tooltip /><Line type="monotone" dataKey="count" name="Complaints" stroke="#1b2a4a" strokeWidth={2} dot={{ r: 3 }} /></LineChart></ResponsiveContainer> : <p className="muted">Trend data will appear after reports are received.</p>}</article><article className="panel"><h3>Area / location breakdown</h3><p className="panel-intro">Only locations voluntarily provided in new complaint forms are aggregated here.</p>{stats.byLocation.length ? <div className="location-list">{stats.byLocation.slice(0, 8).map((item) => <div key={item.location}><span>{item.location}</span><strong>{item.count}</strong></div>)}</div> : <p className="muted">No location information has been provided in the current public dataset.</p>}</article></section>
+      {queues.length > 0 && <section className="dashboard-section"><div className="section-heading"><div><span className="eyebrow">Priority operations</span><h3>Open department queues</h3></div><p>Queues are ordered by urgency and registration time. No citizen data is displayed.</p></div><div className="queue-table"><div className="queue-table__head"><span>Department</span><span>Open reports</span><span>Next priority</span></div>{queues.map((queue) => <div key={queue.department}><strong>{queue.department}</strong><span>{queue.items.length}</span><span>{queue.items[0].priority} — {queue.items[0].priority <= 2 ? 'High' : 'Routine'}</span></div>)}</div></section>}
+    </>}
+  </main></div>;
 }

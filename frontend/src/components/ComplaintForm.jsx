@@ -1,158 +1,25 @@
-import { useState, useRef } from 'react';
-import { submitComplaint } from '../api';
+import { useEffect, useRef, useState } from 'react';
+import { analyseComplaint, submitComplaint } from '../api';
 import RouteTrack from './RouteTrack';
 import './ComplaintForm.css';
 
-const PRIORITY_META = {
-  1: { label: 'Urgent', color: 'var(--urgent)' },
-  2: { label: 'High', color: 'var(--marigold-dark)' },
-  3: { label: 'Medium', color: 'var(--marigold)' },
-  4: { label: 'Low', color: 'var(--text-muted)' },
-  5: { label: 'Low', color: 'var(--text-muted)' },
-};
+const PRIORITIES = { 1: 'Urgent', 2: 'High', 3: 'Medium', 4: 'Low', 5: 'Low' };
+const STAGES = ['Understanding complaint', 'Identifying department', 'Preparing complaint form'];
 
-export default function ComplaintForm() {
-  const [text, setText] = useState('');
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [status, setStatus] = useState('idle'); // idle | loading | done | error
-  const [result, setResult] = useState(null);
-  const [errorMsg, setErrorMsg] = useState('');
-  const fileInputRef = useRef(null);
+export default function ComplaintForm({ onTrack }) {
+  const [draft, setDraft] = useState({ text: '', location: '' }); const [imageFile, setImageFile] = useState(null); const [imagePreview, setImagePreview] = useState(null);
+  const [step, setStep] = useState('compose'); const [form, setForm] = useState(null); const [result, setResult] = useState(null); const [error, setError] = useState(''); const [stage, setStage] = useState(0); const fileInputRef = useRef(null);
+  useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
+  useEffect(() => { if (step !== 'processing') return undefined; const timer = window.setInterval(() => setStage((current) => Math.min(current + 1, STAGES.length - 1)), 700); return () => window.clearInterval(timer); }, [step]);
+  function setDraftValue(key, value) { setDraft((current) => ({ ...current, [key]: value })); }
+  function handleImageChange(event) { const file = event.target.files?.[0]; if (!file) return; if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) { setError('Please use a JPG, PNG, or WebP image smaller than 5 MB.'); return; } if (imagePreview) URL.revokeObjectURL(imagePreview); setImageFile(file); setImagePreview(URL.createObjectURL(file)); setError(''); }
+  function removeImage() { if (imagePreview) URL.revokeObjectURL(imagePreview); setImageFile(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }
+  async function startAnalysis(event) { event.preventDefault(); if (draft.text.trim().length < 5) { setError('Please describe the issue in a bit more detail.'); return; } setError(''); setStage(0); setStep('processing'); try { const analysis = await analyseComplaint(draft.text, imageFile); setForm({ ...analysis, location: draft.location }); setStep('review'); } catch (err) { setError(err.message); setStep('compose'); } }
+  async function registerComplaint(event) { event.preventDefault(); setError(''); setStep('submitting'); try { setResult(await submitComplaint(form, imageFile)); setStep('success'); } catch (err) { setError(err.message); setStep('review'); } }
+  function restart() { setDraft({ text: '', location: '' }); setForm(null); setResult(null); removeImage(); setError(''); setStep('compose'); }
 
-  function handleImageChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-      setErrorMsg('Please use a JPG, PNG, or WebP image smaller than 5 MB.');
-      setStatus('error');
-      e.target.value = '';
-      return;
-    }
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
-    setErrorMsg('');
-  }
-
-  function removeImage() {
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImageFile(null);
-    setImagePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (text.trim().length < 5) {
-      setErrorMsg('Please describe the issue in a bit more detail.');
-      setStatus('error');
-      return;
-    }
-    setStatus('loading');
-    setErrorMsg('');
-    try {
-      const data = await submitComplaint(text, imageFile);
-      setResult(data);
-      setStatus('done');
-    } catch (err) {
-      setErrorMsg(err.message);
-      setStatus('error');
-    }
-  }
-
-  function resetForm() {
-    setText('');
-    removeImage();
-    setResult(null);
-    setStatus('idle');
-  }
-
-  if (status === 'done' && result) {
-    const priority = PRIORITY_META[result.priority] || PRIORITY_META[3];
-    return (
-      <div className="card confirmation">
-        <span className="eyebrow">Complaint registered</span>
-        <h2 className="confirmation__id">{result.complaintId}</h2>
-        <p className="confirmation__hint">Save this ID — you'll need it to track progress.</p>
-
-        <div className="confirmation__grid">
-          <div className="confirmation__stat">
-            <span className="confirmation__stat-label">Routed to</span>
-            <span className="confirmation__stat-value">{result.department}</span>
-          </div>
-          <div className="confirmation__stat">
-            <span className="confirmation__stat-label">Priority</span>
-            <span className="confirmation__stat-value" style={{ color: priority.color }}>
-              {priority.label}
-            </span>
-          </div>
-          <div className="confirmation__stat">
-            <span className="confirmation__stat-label">Expected resolution</span>
-            <span className="confirmation__stat-value">~{result.etaDays} days</span>
-          </div>
-        </div>
-
-        <RouteTrack status={result.status} />
-
-        <button className="btn btn--primary" onClick={resetForm}>
-          Report another issue
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="card">
-      <span className="eyebrow">Report an issue</span>
-      <h2>What's the problem?</h2>
-      <p className="form-intro">
-        Describe it in your own words — English, Hindi, Marathi, or a mix. We'll figure out where it needs to go.
-      </p>
-
-      <form onSubmit={handleSubmit}>
-        <label htmlFor="complaint-text" className="field-label">
-          Describe the issue
-        </label>
-        <textarea
-          id="complaint-text"
-          className="textarea"
-          rows={5}
-          placeholder="e.g. Sadar road madhe khup potholes ahet, gadya pass karta yet nahit..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          maxLength={3000}
-          required
-        />
-
-        <label className="field-label">Add a photo (optional)</label>
-        {!imagePreview ? (
-          <label className="upload-box">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              hidden
-            />
-            <span className="upload-box__icon">+</span>
-            <span>Add a JPG, PNG, or WebP photo (max 5 MB)</span>
-          </label>
-        ) : (
-          <div className="upload-preview">
-            <img src={imagePreview} alt="Complaint attachment preview" />
-            <button type="button" className="upload-preview__remove" onClick={removeImage}>
-              Remove
-            </button>
-          </div>
-        )}
-
-        {status === 'error' && <p className="error-text">{errorMsg}</p>}
-
-        <button type="submit" className="btn btn--primary btn--full" disabled={status === 'loading'}>
-          {status === 'loading' ? 'Submitting…' : 'Submit complaint'}
-        </button>
-      </form>
-    </div>
-  );
+  if (step === 'processing') return <section className="complaint-shell processing" aria-live="polite"><span className="eyebrow">CivicRoute assist</span><h2>We’re preparing your complaint</h2><p>Your report is being checked against municipal service categories.</p><ol className="processing__stages">{STAGES.map((label, index) => <li className={index <= stage ? 'is-active' : ''} key={label}><span>{index < stage ? '✓' : index + 1}</span>{label}</li>)}</ol><small>This usually takes a few seconds. You will be able to review every field before it is registered.</small></section>;
+  if (step === 'success' && result) return <section className="complaint-shell success-panel" role="status"><div className="success-panel__seal">✓</div><span className="eyebrow">Complaint successfully registered</span><h2>Your reference number is ready</h2><p className="success-panel__id">{result.complaintId}</p><p className="form-intro">Please save this number. It is the only information needed to track your complaint.</p><div className="success-panel__summary"><div><span>Department</span><strong>{result.department}</strong></div><div><span>Category</span><strong>{result.category}</strong></div><div><span>Priority</span><strong>{PRIORITIES[result.priority]}</strong></div><div><span>Expected resolution</span><strong>About {result.etaDays} days</strong></div></div><RouteTrack status={result.status} /><div className="button-row"><button className="btn btn--primary" onClick={onTrack}>Track this complaint</button><button className="btn btn--secondary" onClick={restart}>Return home</button></div></section>;
+  if (step === 'review' || step === 'submitting') return <section className="complaint-shell review-shell"><span className="eyebrow">Step 2 of 2 · Review before submission</span><h2>Complaint form</h2><p className="form-intro">The suggested routing is based on your report. Please correct any field that needs attention.</p><form onSubmit={registerComplaint} className="government-form"><label>Subject<input value={form.subject || ''} onChange={(e) => setForm({ ...form, subject: e.target.value })} required /></label><label>Department<input value={form.department || ''} onChange={(e) => setForm({ ...form, department: e.target.value })} required /><small>Use the suggested municipal department name where possible.</small></label><label>Category<input value={form.category || ''} onChange={(e) => setForm({ ...form, category: e.target.value })} required /></label><label>Priority<select value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}>{Object.entries(PRIORITIES).map(([value, label]) => <option value={value} key={value}>{value} — {label}</option>)}</select></label><label className="form-wide">Location / landmark (optional)<input value={form.location || ''} placeholder="e.g. Ward 4, near the bus stand" onChange={(e) => setForm({ ...form, location: e.target.value })} /></label><label className="form-wide">Complaint description<textarea rows="6" value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })} required /></label><div className="review-note form-wide">Estimated resolution: <strong>about {form.etaDays} days</strong>. This estimate updates from the live department queue when registered.</div>{error && <p className="error-text form-wide">{error}</p>}<div className="button-row form-wide"><button type="button" className="btn btn--secondary" onClick={() => setStep('compose')}>Back to report</button><button className="btn btn--primary" disabled={step === 'submitting'}>{step === 'submitting' ? 'Registering…' : 'Confirm and register complaint'}</button></div></form></section>;
+  return <section className="complaint-shell"><span className="eyebrow">Citizen grievance service</span><h2>Report a civic issue</h2><p className="form-intro">Write in English, हिंदी, मराठी, Hinglish, or a mix. We will suggest the right department and you can check the completed form before submitting.</p><form onSubmit={startAnalysis}><label className="field-label" htmlFor="complaint-text">Describe the issue <span aria-hidden="true">*</span></label><textarea id="complaint-text" className="textarea" rows={7} placeholder="e.g. Sadar road madhe khup potholes ahet, gadi chalana dhokadayak zala aahe." value={draft.text} onChange={(e) => setDraftValue('text', e.target.value)} maxLength={3000} required /><div className="field-meta"><span>{draft.text.length}/3000</span><span>Minimum 5 characters</span></div><label className="field-label" htmlFor="location">Location / landmark <small>(optional)</small></label><input id="location" className="text-input" placeholder="Ward, street, landmark or area" value={draft.location} onChange={(e) => setDraftValue('location', e.target.value)} /><label className="field-label">Supporting photo <small>(optional)</small></label>{!imagePreview ? <label className="upload-box"><input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} hidden /><span className="upload-box__icon" aria-hidden="true">⌁</span><strong>Add a JPG, PNG, or WebP photo</strong><span>Maximum file size: 5 MB</span></label> : <div className="upload-preview"><img src={imagePreview} alt="Complaint attachment preview" /><button type="button" className="upload-preview__remove" onClick={removeImage}>Remove photo</button></div>}{error && <p className="error-text">{error}</p>}<button type="submit" className="btn btn--primary btn--full">Continue to review</button></form></section>;
 }

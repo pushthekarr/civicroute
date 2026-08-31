@@ -6,7 +6,7 @@ CivicRoute is a final-year major project for municipal grievance intake. Citizen
 
 ## Implemented capabilities
 
-- React/Vite public interface for complaint submission, citizen tracking, and aggregate city data.
+- React/Vite public interface with guided complaint review, citizen tracking, and a privacy-preserving aggregate civic dashboard.
 - English, Hindi, Marathi, Hinglish, and mixed-language support in Groq prompting and offline keyword fallback.
 - Groq text classification using `openai/gpt-oss-20b` and optional image classification using `meta-llama/llama-4-scout-17b-16e-instruct`.
 - Strict AI response validation. Invalid, unavailable, or low-confidence responses fall back to a Unicode-normalising Trie; unmatched cases take a labelled general municipal route.
@@ -76,7 +76,8 @@ Backend `.env` is ignored by Git. Never put API keys in frontend variables, sour
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `POST` | `/api/complaints` | Submit multipart `text` and optional `image`. |
+| `POST` | `/api/complaints/analyse` | Analyse multipart `text` and optional `image` before citizen review; nothing is registered. |
+| `POST` | `/api/complaints` | Register a reviewed multipart complaint (`description`, routing fields, optional `location` and `image`). `text` remains supported for compatibility. |
 | `GET` | `/api/complaints/:id` | Citizen-safe tracking result, history, and queue position. |
 | `GET` | `/api/complaints/stats` | Aggregate public-dashboard metrics. |
 | `GET` | `/api/complaints/queues` | Privacy-preserving priority-queue summaries. |

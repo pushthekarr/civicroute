@@ -1,9 +1,25 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-export async function submitComplaint(text, imageFile) {
+function complaintFormData(values, imageFile) {
   const formData = new FormData();
-  formData.append('text', text);
+  Object.entries(values).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) formData.append(key, value);
+  });
   if (imageFile) formData.append('image', imageFile);
+  return formData;
+}
+
+export async function analyseComplaint(text, imageFile) {
+  const res = await fetch(`${API_BASE}/complaints/analyse`, {
+    method: 'POST', body: complaintFormData({ text }, imageFile),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'We could not analyse this complaint. Please try again.');
+  return data;
+}
+
+export async function submitComplaint(values, imageFile) {
+  const formData = complaintFormData(values, imageFile);
 
   const res = await fetch(`${API_BASE}/complaints`, {
     method: 'POST',
