@@ -1,9 +1,9 @@
 import './Header.css';
 
 const TABS = [
-  { id: 'submit', label: 'Report an Issue' },
-  { id: 'track', label: 'Track My Complaint' },
-  { id: 'dashboard', label: 'Public Dashboard' },
+  { id: 'home', label: 'Home' }, { id: 'lodge', label: 'Lodge Complaint' }, { id: 'track', label: 'Track Complaint' },
+  { id: 'dashboard', label: 'Public Dashboard' }, { id: 'departments', label: 'Departments' }, { id: 'process', label: 'Grievance Process' },
+  { id: 'help', label: 'Help / FAQ' }, { id: 'contact', label: 'Contact Us' }, { id: 'login', label: 'Official Login' },
 ];
 
 export default function Header({ active, onChange }) {
@@ -22,7 +22,7 @@ export default function Header({ active, onChange }) {
           </div>
           <div>
             <h1 className="header__title">CivicRoute</h1>
-            <p className="header__tagline">Report civic issues. Track real progress.</p>
+            <p className="header__tagline">Citizen grievance service · Government-style civic assistance</p>
           </div>
         </div>
       </div>

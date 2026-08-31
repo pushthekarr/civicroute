@@ -6,7 +6,8 @@ CivicRoute is a final-year major project for municipal grievance intake. Citizen
 
 ## Implemented capabilities
 
-- React/Vite public interface with guided complaint review, citizen tracking, and a privacy-preserving aggregate civic dashboard.
+- React/Vite government-service-style citizen portal with a homepage, service navigation, guided complaint review, citizen tracking, and a privacy-preserving aggregate civic dashboard.
+- Mandatory citizen registration details: full name, email, Indian mobile number, address/locality, and a validated 12-digit Aadhaar field. CivicRoute never persists or returns raw Aadhaar: it saves only the last four digits and a one-way, per-record hash.
 - English, Hindi, Marathi, Hinglish, and mixed-language support in Groq prompting and offline keyword fallback.
 - Groq text classification using `openai/gpt-oss-20b` and optional image classification using `meta-llama/llama-4-scout-17b-16e-instruct`.
 - Strict AI response validation. Invalid, unavailable, or low-confidence responses fall back to a Unicode-normalising Trie; unmatched cases take a labelled general municipal route.
@@ -77,7 +78,7 @@ Backend `.env` is ignored by Git. Never put API keys in frontend variables, sour
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/complaints/analyse` | Analyse multipart `text` and optional `image` before citizen review; nothing is registered. |
-| `POST` | `/api/complaints` | Register a reviewed multipart complaint (`description`, routing fields, optional `location` and `image`). `text` remains supported for compatibility. |
+| `POST` | `/api/complaints` | Register a reviewed multipart complaint. `fullName`, `email`, `phone`, `address`, `aadhaar`, and `description` are mandatory; routing fields and an optional `image` are supported. Raw Aadhaar is never persisted. |
 | `GET` | `/api/complaints/:id` | Citizen-safe tracking result, history, and queue position. |
 | `GET` | `/api/complaints/stats` | Aggregate public-dashboard metrics. |
 | `GET` | `/api/complaints/queues` | Privacy-preserving priority-queue summaries. |
@@ -85,6 +86,12 @@ Backend `.env` is ignored by Git. Never put API keys in frontend variables, sour
 | `GET` | `/api/health` | Health check for deployment monitoring. |
 
 New complaints are automatically routed after submission, so their current state becomes `Routed` while both initial history entries are retained. Valid transitions are constrained to prevent invalid state changes.
+
+## Privacy notes
+
+The public tracker returns only a complaint's reference, routing, status, ETA, queue position, and lifecycle history. It never returns citizen contact details, address, attachment paths, complaint text, or any Aadhaar representation. The public dashboard shows aggregate information only; location totals require at least three reports before they are shown.
+
+Official login and email notifications are intentionally placeholders for later project steps and are not implemented in this release.
 
 ## Testing
 

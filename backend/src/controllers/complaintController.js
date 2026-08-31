@@ -9,6 +9,7 @@ const { OPEN_STATUSES, getQueueSnapshot } = require('../utils/complaintQueue');
 
 const STATUS_FLOW = { Submitted: ['Routed'], Routed: ['In Progress'], 'In Progress': ['Resolved'], Resolved: [] };
 const MAX_TEXT_LENGTH = 3000;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function generateComplaintId() { return `GC-${new Date().getFullYear()}-${nanoid(7).replace(/[^a-z0-9]/gi, 'X').toUpperCase()}`; }
 function complaintHistory(db, id) { return db.status_log.filter((entry) => entry.complaint_id === id); }
@@ -19,6 +20,24 @@ function isAdminRequest(req) {
 }
 
 function validText(value, max = MAX_TEXT_LENGTH) { return String(value || '').trim().slice(0, max); }
+function normaliseAadhaar(value) { return String(value || '').replace(/[\s-]/g, ''); }
+function validPhone(value) { return /^[6-9]\d{9}$/.test(String(value || '').replace(/\s|-/g, '')); }
+function hashAadhaar(aadhaar) {
+  // A per-record salt means the stored value cannot reveal or be used to look up
+  // the original number. Raw Aadhaar is deliberately never written to disk.
+  return crypto.createHash('sha256').update(`${crypto.randomBytes(32).toString('hex')}:${aadhaar}`).digest('hex');
+}
+function citizenValidation(body) {
+  const fullName = validText(body.fullName, 120);
+  const email = validText(body.email, 160).toLowerCase();
+  const phone = String(body.phone || '').replace(/\s|-/g, '');
+  const address = validText(body.address, 300);
+  const aadhaar = normaliseAadhaar(body.aadhaar);
+  if (!fullName || !EMAIL_PATTERN.test(email) || !validPhone(phone) || !address || !/^\d{12}$/.test(aadhaar)) {
+    return null;
+  }
+  return { fullName, email, phone, address, aadhaar };
+}
 function titleFromText(text) {
   const firstSentence = text.replace(/\s+/g, ' ').split(/[.!?।]/)[0].trim();
   return (firstSentence || 'Civic service request').slice(0, 120);
@@ -57,6 +76,8 @@ async function createComplaint(req, res, next) {
   try {
     const text = validText(req.body.description || req.body.text);
     if (text.length < 5 || text.length > MAX_TEXT_LENGTH) return res.status(400).json({ error: `Complaint text must be between 5 and ${MAX_TEXT_LENGTH} characters.` });
+    const citizen = citizenValidation(req.body);
+    if (!citizen) return res.status(400).json({ error: 'Provide a full name, valid email, 10-digit Indian mobile number, address/locality, and a 12-digit Aadhaar number.' });
     const db = load();
     const analysis = await analyseComplaint({ text, file: req.file, db });
     const reviewedDepartment = db.departments.find((item) => item.name === validText(req.body.department, 100));
@@ -67,7 +88,14 @@ async function createComplaint(req, res, next) {
     const backlogCount = db.complaints.filter((item) => item.department_id === department.id && OPEN_STATUSES.has(item.status)).length;
     const eta = predictETA({ avgResolutionDays: department.avg_resolution_days, priority, backlogCount });
     const now = new Date().toISOString(); const id = generateComplaintId();
-    const complaint = { id, raw_text: text, subject: validText(req.body.subject, 120) || titleFromText(text), location: validText(req.body.location, 180) || null, image_path: req.file ? req.file.path : null, image_mime_type: req.file?.mimetype || null, department_id: department.id, category, priority, confidence: analysis.confidence, status: 'Routed', eta_days: eta, classification_source: analysis.classificationSource, created_at: now, updated_at: now };
+    const complaint = {
+      id, raw_text: text, subject: validText(req.body.subject, 120) || titleFromText(text),
+      location: citizen.address, citizen: { full_name: citizen.fullName, email: citizen.email, phone: citizen.phone },
+      aadhaar_last4: citizen.aadhaar.slice(-4), aadhaar_hash: hashAadhaar(citizen.aadhaar),
+      image_path: req.file ? req.file.path : null, image_mime_type: req.file?.mimetype || null,
+      department_id: department.id, category, priority, confidence: analysis.confidence, status: 'Routed', eta_days: eta,
+      classification_source: analysis.classificationSource, created_at: now, updated_at: now,
+    };
     db.complaints.push(complaint);
     db.status_log.push({ complaint_id: id, status: 'Submitted', changed_at: now, note: 'Complaint received' }, { complaint_id: id, status: 'Routed', changed_at: now, note: `Automatically routed to ${department.name}` });
     save(db);
@@ -82,7 +110,15 @@ function getComplaint(req, res, next) {
     const department = db.departments.find((item) => item.id === complaint.department_id);
     const queue = getQueueSnapshot(db.complaints, complaint.department_id);
     const queuePosition = queue.findIndex((item) => item.complaintId === complaint.id) + 1;
-    return res.json({ ...complaint, department_name: department?.name || 'Unassigned', queue_position: queuePosition || null, history: complaintHistory(db, complaint.id) });
+    // Tracking deliberately exposes only the information required to follow a case.
+    // It never returns contact details, address, attachment paths, full description,
+    // Aadhaar fragments, or the stored Aadhaar hash.
+    return res.json({
+      id: complaint.id, subject: complaint.subject, department_name: department?.name || 'Unassigned',
+      category: complaint.category, priority: complaint.priority, status: complaint.status, eta_days: complaint.eta_days,
+      created_at: complaint.created_at, updated_at: complaint.updated_at, queue_position: queuePosition || null,
+      history: complaintHistory(db, complaint.id),
+    });
   } catch (error) { return next(error); }
 }
 
@@ -119,7 +155,8 @@ function getStats(req, res, next) {
     const trendMap = new Map();
     db.complaints.forEach((item) => { const day = String(item.created_at).slice(0, 10); trendMap.set(day, (trendMap.get(day) || 0) + 1); });
     const trends = [...trendMap].sort(([a], [b]) => a.localeCompare(b)).slice(-14).map(([date, count]) => ({ date, count }));
-    const byLocation = [...db.complaints.reduce((map, item) => { if (item.location) map.set(item.location, (map.get(item.location) || 0) + 1); return map; }, new Map())].map(([location, count]) => ({ location, count })).sort((a, b) => b.count - a.count);
+    const byLocation = [...db.complaints.reduce((map, item) => { if (item.location) map.set(item.location, (map.get(item.location) || 0) + 1); return map; }, new Map())]
+      .filter(([, count]) => count >= 3).map(([location, count]) => ({ location, count })).sort((a, b) => b.count - a.count);
     return res.json({ total, openCount, inProgressCount, resolvedCount: total - openCount, registeredToday, highPriorityCount, avgEtaDays, avgResolutionDays, byDepartment, byStatus, trends, byLocation });
   } catch (error) { return next(error); }
 }

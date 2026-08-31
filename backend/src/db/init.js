@@ -29,7 +29,7 @@ const DEPARTMENTS_SEED = [
 ];
 
 function createInitialData() {
-  return { schema_version: 2, departments: DEPARTMENTS_SEED.map((department, index) => ({ id: index + 1, ...department })), complaints: [], status_log: [] };
+  return { schema_version: 3, departments: DEPARTMENTS_SEED.map((department, index) => ({ id: index + 1, ...department })), complaints: [], status_log: [] };
 }
 
 function load() {
@@ -52,7 +52,7 @@ function load() {
       if (existing) Object.assign(existing, seed);
       else db.departments.push({ id: nextDepartmentId(db.departments), ...seed });
     }
-    db.schema_version = 2;
+    db.schema_version = 3;
     return db;
   } catch (error) { throw new Error(`Could not read CivicRoute data store: ${error.message}`); }
 }
