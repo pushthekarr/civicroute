@@ -1,0 +1,11 @@
+const express = require('express');
+const { login, logout, session, listComplaints, getOfficialComplaint, updateOfficialComplaint } = require('../controllers/officialController');
+const { requireOfficial } = require('../services/officialAuth');
+const router = express.Router();
+router.post('/login', login);
+router.post('/logout', logout);
+router.get('/session', requireOfficial, session);
+router.get('/complaints', requireOfficial, listComplaints);
+router.get('/complaints/:id', requireOfficial, getOfficialComplaint);
+router.patch('/complaints/:id', requireOfficial, updateOfficialComplaint);
+module.exports = router;

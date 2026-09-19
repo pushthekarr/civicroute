@@ -49,3 +49,15 @@ export async function fetchPriorityQueues() {
   if (!res.ok) throw new Error(data.error || 'Could not load priority queues.');
   return data;
 }
+
+async function officialRequest(path, options = {}) {
+  const res = await fetch(`${API_BASE}/official${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Official request failed.');
+  return data;
+}
+export const officialLogin = (username, password) => officialRequest('/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+export const officialLogout = () => officialRequest('/logout', { method: 'POST' });
+export const officialSession = () => officialRequest('/session');
+export const fetchOfficialComplaints = (filters = {}) => officialRequest(`/complaints?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value)).toString()}`);
+export const updateOfficialComplaint = (id, payload) => officialRequest(`/complaints/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });

@@ -6,6 +6,7 @@ const { classifyText, classifyImage, combineClassifications } = require('../util
 const { buildTrieFromDepartments } = require('../utils/trieClassifier');
 const { predictETA } = require('../utils/etaEngine');
 const { OPEN_STATUSES, getQueueSnapshot } = require('../utils/complaintQueue');
+const { sendComplaintConfirmation } = require('../services/emailService');
 
 const STATUS_FLOW = { Submitted: ['Routed'], Routed: ['In Progress'], 'In Progress': ['Resolved'], Resolved: [] };
 const MAX_TEXT_LENGTH = 3000;
@@ -99,7 +100,10 @@ async function createComplaint(req, res, next) {
     db.complaints.push(complaint);
     db.status_log.push({ complaint_id: id, status: 'Submitted', changed_at: now, note: 'Complaint received' }, { complaint_id: id, status: 'Routed', changed_at: now, note: `Automatically routed to ${department.name}` });
     save(db);
-    res.status(201).json({ complaintId: id, department: department.name, category: complaint.category, priority: complaint.priority, etaDays: eta, status: complaint.status, classificationSource: analysis.classificationSource });
+    // Registration is durable before the optional external email attempt. A mail
+    // outage must never roll back a citizen's successfully registered complaint.
+    const email = await sendComplaintConfirmation({ to: citizen.email, complaint, department: department.name });
+    res.status(201).json({ complaintId: id, department: department.name, category: complaint.category, priority: complaint.priority, etaDays: eta, status: complaint.status, classificationSource: analysis.classificationSource, email: { attempted: email.attempted, delivered: email.delivered } });
   } catch (error) { next(error); }
 }
 

@@ -11,6 +11,8 @@ CivicRoute is a final-year major project for municipal grievance intake. Citizen
 - English, Hindi, Marathi, Hinglish, and mixed-language support in Groq prompting and offline keyword fallback.
 - Groq text classification using `openai/gpt-oss-20b` and optional image classification using `meta-llama/llama-4-scout-17b-16e-instruct`.
 - Strict AI response validation. Invalid, unavailable, or low-confidence responses fall back to a Unicode-normalising Trie; unmatched cases take a labelled general municipal route.
+- Optional SMTP complaint confirmations that never prevent a valid complaint from being registered.
+- Protected municipality official workspace with backend-issued signed sessions, official-only complaint details, lifecycle updates, and internal notes.
 - 18 seeded departments: Roads & PWD, Water Supply, Electricity, Sanitation & Garbage, Food Safety, Drugs & Medicines, Public Health, Police & Public Safety, Education, Municipal & Property Tax, Public Transport, Environment & Pollution, Street Lighting, Building & Encroachment, Consumer Affairs, Telecom & Utilities, Parks & Recreation, and Fire & Disaster Response.
 - Lifecycle with immutable history: `Submitted -> Routed -> In Progress -> Resolved`.
 - Persistent JSON-backed data store with atomic writes; portable on Windows and suitable for one Node process on one EC2 instance.
@@ -71,6 +73,10 @@ Backend `.env` is ignored by Git. Never put API keys in frontend variables, sour
 | `GROQ_VISION_MODEL` | Optional override; default `meta-llama/llama-4-scout-17b-16e-instruct`. |
 | `CORS_ORIGIN` | Comma-separated allowed frontend origins. |
 | `ADMIN_API_KEY` | Required for protected lifecycle updates. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Optional Nodemailer SMTP configuration for citizen confirmation emails. If incomplete or unavailable, the complaint is retained and the API reports email non-delivery. |
+| `OFFICIAL_USERNAME` | Demo municipality official username. Use `admin@civicroute.gov.in` locally unless you intentionally change it. |
+| `OFFICIAL_PASSWORD` | Required secret for the one demo official account. Never commit it. |
+| `OFFICIAL_SESSION_SECRET` | Required long random secret used to sign official sessions. Never commit it. |
 | `CIVICROUTE_DATA_PATH` | Optional absolute path for the persistent JSON store. |
 
 ## API overview
@@ -83,6 +89,10 @@ Backend `.env` is ignored by Git. Never put API keys in frontend variables, sour
 | `GET` | `/api/complaints/stats` | Aggregate public-dashboard metrics. |
 | `GET` | `/api/complaints/queues` | Privacy-preserving priority-queue summaries. |
 | `PATCH` | `/api/complaints/:id/status` | Protected lifecycle update; use `x-admin-key`. |
+| `POST` | `/api/official/login` | Starts the configured official's protected session. |
+| `POST` | `/api/official/logout` | Ends the official session. |
+| `GET` | `/api/official/complaints` | Official-only complaint list with filters. |
+| `PATCH` | `/api/official/complaints/:id` | Official-only valid lifecycle update and/or internal note. |
 | `GET` | `/api/health` | Health check for deployment monitoring. |
 
 New complaints are automatically routed after submission, so their current state becomes `Routed` while both initial history entries are retained. Valid transitions are constrained to prevent invalid state changes.
@@ -91,7 +101,17 @@ New complaints are automatically routed after submission, so their current state
 
 The public tracker returns only a complaint's reference, routing, status, ETA, queue position, and lifecycle history. It never returns citizen contact details, address, attachment paths, complaint text, or any Aadhaar representation. The public dashboard shows aggregate information only; location totals require at least three reports before they are shown.
 
-Official login and email notifications are intentionally placeholders for later project steps and are not implemented in this release.
+### Official demo login
+
+There is deliberately no public official-registration route. Set these values in `backend/.env` before starting the backend:
+
+```dotenv
+OFFICIAL_USERNAME=admin@civicroute.gov.in
+OFFICIAL_PASSWORD=choose-a-local-password
+OFFICIAL_SESSION_SECRET=use-a-long-random-secret
+```
+
+The demo username is `admin@civicroute.gov.in`; the password is only read from `OFFICIAL_PASSWORD` and is never sent to the frontend or committed. Start the backend and frontend as in Local setup, open **Official Login**, and sign in with that configured account. For a random session secret, run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` locally.
 
 ## Testing
 

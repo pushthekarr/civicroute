@@ -4,6 +4,7 @@ import ComplaintForm from './components/ComplaintForm';
 import TrackComplaint from './components/TrackComplaint';
 import Home from './components/Home';
 import PortalInfo from './components/PortalInfo';
+import OfficialPortal from './components/OfficialPortal';
 const Dashboard = lazy(() => import('./components/Dashboard'));
 
 export default function App() {
@@ -16,7 +17,8 @@ export default function App() {
         {tab === 'home' && <Home navigate={setTab} />}
         {tab === 'lodge' && <ComplaintForm onTrack={() => setTab('track')} onHome={() => setTab('home')} />}
         {tab === 'track' && <TrackComplaint />}
-        {['departments', 'process', 'help', 'contact', 'login'].includes(tab) && <PortalInfo page={tab} navigate={setTab} />}
+        {['departments', 'process', 'help', 'contact'].includes(tab) && <PortalInfo page={tab} navigate={setTab} />}
+        {tab === 'login' && <OfficialPortal onCitizenPortal={() => setTab('home')} />}
         {tab === 'dashboard' && <Suspense fallback={<div className="dashboard-state">Loading dashboard…</div>}><Dashboard /></Suspense>}
       </main>
       <footer className="app-footer">

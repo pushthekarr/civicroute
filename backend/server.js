@@ -5,11 +5,12 @@ const { load } = require('./src/db/init');
 load(); // ensures data.json + seed departments exist on boot
 
 const complaintsRouter = require('./src/routes/complaints');
+const officialRouter = require('./src/routes/official');
 
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map((origin) => origin.trim());
 app.disable('x-powered-by');
-app.use(cors({ origin(origin, callback) {
+app.use(cors({ credentials: true, origin(origin, callback) {
   if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
   return callback(new Error('Origin is not allowed by CORS'));
 } }));
@@ -17,6 +18,7 @@ app.use(express.json({ limit: '100kb' }));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'CivicRoute backend' }));
 app.use('/api/complaints', complaintsRouter);
+app.use('/api/official', officialRouter);
 
 app.use((err, req, res, next) => {
   if (err.name === 'MulterError') return res.status(400).json({ error: 'Please upload a JPG, PNG, or WebP image smaller than 5 MB.' });
